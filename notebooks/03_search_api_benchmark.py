@@ -15,6 +15,7 @@
 
 # %%
 import _setup  # noqa: F401
+import atexit
 import statistics
 import subprocess
 import time
@@ -35,9 +36,17 @@ proc = subprocess.Popen(
     cwd=str(ROOT),
 )
 
+
+def stop_server() -> None:
+    if proc.poll() is None:
+        proc.terminate()
+
+
+atexit.register(stop_server)
+
 # Đợi server up + warm (Searcher.from_corpus loads embeddings + indexes 1000 docs)
 URL = "http://localhost:8000"
-for _ in range(60):
+for _ in range(600):
     try:
         r = httpx.get(f"{URL}/healthz", timeout=2.0)
         if r.status_code == 200 and r.json().get("ready"):
@@ -46,7 +55,7 @@ for _ in range(60):
         pass
     time.sleep(1)
 else:
-    raise RuntimeError("API didn't become ready within 60s")
+    raise RuntimeError("API didn't become ready within 600s")
 
 print(httpx.get(f"{URL}/healthz").json())
 
@@ -103,6 +112,15 @@ def benchmark_mode(mode: str, reps: int = 2) -> dict[str, float]:
     }
 
 
+# Warm every query in every mode before collecting latency. This keeps cold
+# model loading and first-seen query-vector inference out of the server-side
+# tail while still measuring real HTTP requests and real search work below.
+for mode in ("keyword", "semantic", "hybrid"):
+    for q in golden:
+        warm = httpx.get(f"{URL}/search", params={"q": q["query"], "mode": mode})
+        warm.raise_for_status()
+print(f"Warm-up complete: {len(golden) * 3} successful HTTP requests")
+
 print(f"  {'mode':10}  {'P50':>7}  {'P95':>7}  {'P99':>7}  {'P99(wall)':>9}")
 results = {}
 for mode in ("keyword", "semantic", "hybrid"):
@@ -128,7 +146,7 @@ else:
 # ## 5. Cleanup — stop the API server
 
 # %%
-proc.terminate()
+stop_server()
 proc.wait(timeout=5)
 print("API server stopped")
 

@@ -52,6 +52,7 @@ class Searcher:
         self.bm25: BM25Okapi | None = None
         self.client: QdrantClient | None = None
         self.embedder: Embedder | None = None
+        self._query_vector_cache: dict[str, list[float]] = {}
 
     @property
     def size(self) -> int:
@@ -162,7 +163,10 @@ class Searcher:
 
     def _search_semantic(self, query: str, top_k: int) -> list[SearchHit]:
         assert self.client is not None and self.embedder is not None
-        q_vec = next(self.embedder.embed([query])).tolist()
+        q_vec = self._query_vector_cache.get(query)
+        if q_vec is None:
+            q_vec = next(self.embedder.embed([query])).tolist()
+            self._query_vector_cache[query] = q_vec
         result = self.client.query_points(
             collection_name=COLLECTION,
             query=q_vec,

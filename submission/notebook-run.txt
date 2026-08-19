@@ -1,0 +1,8 @@
+notebooks/01_embeddings_index.ipynb       PASS
+notebooks/02_hybrid_search_rrf.ipynb      PASS
+notebooks/03_search_api_benchmark.ipynb   PASS
+notebooks/04_feast_feature_store.ipynb    PASS
+notebooks/05_filtered_search.ipynb        PASS
+notebooks/06_agent_retrieval.ipynb        PASS
+notebooks/07_semantic_cache.ipynb         PASS
+notebooks/08_feature_engineering.ipynb    PASS

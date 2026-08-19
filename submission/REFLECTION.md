@@ -4,17 +4,13 @@
 **MSSV:** 2A202601647  
 **Path đã chạy:** lite
 
----
-
 ## Câu hỏi (≤ 200 chữ)
 
-Trên golden set, hybrid RRF thắng trung bình vì kết hợp được tín hiệu lexical của BM25 và tín hiệu semantic của vector search. Với query `exact`, BM25 thường mạnh nhất hoặc ngang hybrid vì từ khóa kỹ thuật xuất hiện trực tiếp trong corpus. Với `paraphrase`, vector search có lợi thế khi embedding model hiểu tốt ngôn ngữ; riêng lite path dùng `bge-small-en`, nên paraphrase tiếng Việt có thể yếu hơn mong đợi. Với `mixed`, hybrid ổn định nhất vì tận dụng được cả hai loại tín hiệu.
+Trên golden set, hybrid RRF thắng trung bình vì kết hợp tín hiệu lexical của BM25 với tín hiệu semantic của vector search. Query `exact` thường để BM25 mạnh nhất hoặc ngang hybrid vì thuật ngữ xuất hiện nguyên văn. Query `paraphrase` có lợi thế cho vector nếu embedding hiểu tốt tiếng Việt; trên lite path, `bge-small-en` khiến nhóm này yếu hơn. Query `mixed` là nơi hybrid ổn định nhất vì dùng được cả hai tín hiệu.
 
-Tôi không dùng hybrid khi bài toán là exact lookup theo mã/ID/thuật ngữ cần khớp literal, khi đó BM25 đơn giản và rẻ hơn. Ngược lại, nếu corpus thiên về semantic matching và lexical overlap thấp, pure vector có thể đủ tốt, giảm độ phức tạp và latency so với chạy hai retriever rồi fusion.
+Tôi không dùng hybrid cho exact lookup theo mã, ID hoặc thuật ngữ cần khớp literal; BM25 đơn giản và rẻ hơn. Nếu corpus thiên về semantic matching và ít lexical overlap, pure vector có thể đủ tốt, giảm độ phức tạp và latency.
 
-## Điều ngạc nhiên nhất khi làm lab này
-
-Chất lượng retrieval phụ thuộc mạnh vào embedding model; đổi model có thể thay đổi cả chất lượng tiếng Việt lẫn số chiều vector, nên phải re-index.
+Điều bất ngờ nhất là đổi embedding model có thể thay đổi chất lượng tiếng Việt và số chiều vector, vì vậy phải re-index.
 
 ## Bonus challenge
 
