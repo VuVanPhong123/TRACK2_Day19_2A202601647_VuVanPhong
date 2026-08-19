@@ -86,11 +86,14 @@ Không thực hiện bonus vì đây là phần optional, không thuộc yêu c�
 
       - name: Install and seed lite path
         shell: bash
-        run: bash setup-lite.sh
+        run: |
+          set -euo pipefail
+          bash setup-lite.sh
 
       - name: Run tests and benchmarks
         shell: bash
         run: |
+          set -euo pipefail
           source .venv/bin/activate
           make test | tee submission/test-results.txt
           make verify-lite | tee submission/verify-lite.txt
@@ -99,12 +102,18 @@ Không thực hiện bonus vì đây là phần optional, không thuộc yêu c�
       - name: Execute all notebooks
         shell: bash
         run: |
+          set -euo pipefail
           source .venv/bin/activate
           make notebooks | tee submission/notebook-run.txt
+          if grep -q 'FAIL' submission/notebook-run.txt; then
+            echo 'At least one notebook failed execution.' >&2
+            exit 1
+          fi
 
       - name: Validate notebook evidence and build evidence pages
         shell: bash
         run: |
+          set -euo pipefail
           source .venv/bin/activate
           python - <<'PY'
           from __future__ import annotations
@@ -116,7 +125,7 @@ Không thực hiện bonus vì đây là phần optional, không thuộc yêu c�
               '01_embeddings_index': ['Indexed: 1000 vectors', 'Query (paraphrase)'],
               '02_hybrid_search_rrf': ['Precision@10', 'mixed'],
               '03_search_api_benchmark': ['Hybrid P99 server-side:', 'PASS'],
-              '04_feast_feature_store': ['Wrote 3 Parquet sources', 'Online lookup latency over 100 calls:'],
+              '04_feast_feature_store': ['Wrote 3 Parquet sources', 'Online lookup latency over 100 calls:', 'PASS — online lookup P99 < 10ms'],
               '05_filtered_search': ['selectivity =', 'fANN'],
               '06_agent_retrieval': ['single-shot', 'agentic (no filter)', 'features   :'],
               '07_semantic_cache': ['ngưỡng', 'namespaced=False', 'namespaced=True'],
