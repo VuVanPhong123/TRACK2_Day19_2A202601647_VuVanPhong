@@ -1,3 +1,5 @@
+Command: make verify-lite
+
 Day 19 lite smoke test
   • fastembed loads + embeds (BAAI/bge-small-en-v1.5)
   • Qdrant in-memory: index + search

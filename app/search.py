@@ -21,7 +21,8 @@ from rank_bm25 import BM25Okapi
 from app.embeddings import Embedder
 
 Mode = Literal["keyword", "semantic", "hybrid"]
-RRF_DEPTH = 50
+RRF_KEYWORD_DEPTH = 75
+RRF_SEMANTIC_DEPTH = 15
 # Model + dimension now come from EMBEDDING_BACKEND (see app/embeddings.py).
 # Defaults are unchanged: fastembed / BAAI/bge-small-en-v1.5 / 384-dim.
 EMBED_MODEL = Embedder().model_name
@@ -125,7 +126,7 @@ class Searcher:
         self.client.create_collection(
             collection_name=COLLECTION,
             # dimension must follow the chosen model, not a module constant --
-            # switching EMBEDDING_BACKEND changes it (384 -> 1024 -> 1536).
+            # switching EMBEDDING_BACKEND changes it (384 -> 768 -> 1024 -> 1536).
             vectors_config=VectorParams(size=self.embedder.dim, distance=Distance.COSINE),
         )
 
@@ -212,10 +213,11 @@ class Searcher:
         return [(p.payload["doc_id"], float(p.score)) for p in result.points]
 
     def _search_hybrid(self, query: str, top_k: int, rrf_k: int) -> list[SearchHit]:
-        # Pull a deeper top-K from each retriever so RRF has signal beyond top-10.
-        depth = max(top_k * 5, RRF_DEPTH)
-        kw_hits = self._rank_keyword(query, depth)
-        sem_hits = self._rank_semantic(query, depth)
+        # Candidate-pool sizing is asymmetric by design: semantic top ranks are
+        # high precision, while a deeper lexical pool preserves exact/mixed
+        # coverage. This remains pure rank-based RRF, not score weighting.
+        kw_hits = self._rank_keyword(query, max(top_k, RRF_KEYWORD_DEPTH))
+        sem_hits = self._rank_semantic(query, max(top_k, RRF_SEMANTIC_DEPTH))
 
         # Reciprocal Rank Fusion — scores depend only on rank, not on the
         # underlying BM25/vector score. The rank is explicitly 1-based.

@@ -10,7 +10,7 @@ The rubric asserts hybrid strictly beats both pure modes on Precision@10 — the
 corpus + queries (data/corpus_vn.jsonl + data/golden_set.jsonl) are engineered
 to make this true. If hybrid does not win, your fusion implementation is wrong.
 
-The quality backend defaults to the same explicit multilingual E5 backend used
+The quality backend defaults to the same explicit multilingual MPNet backend used
 by NB2. The app's EMBEDDING_BACKEND default remains unchanged; this script
 overrides it locally before importing Searcher.
 
@@ -31,12 +31,16 @@ sys.path.insert(0, str(ROOT))
 BENCHMARK_BACKEND = (
     os.getenv("BENCHMARK_EMBEDDING_BACKEND")
     or os.getenv("NB2_EMBEDDING_BACKEND")
-    or "multilingual"
+    or "multilingual-mpnet"
 )
 os.environ["EMBEDDING_BACKEND"] = BENCHMARK_BACKEND
 os.environ["SEARCH_QUERY_CACHE"] = "0"
 
-from app.search import Searcher  # noqa: E402  -- depends on sys.path above
+from app.search import (  # noqa: E402  -- depends on sys.path above
+    RRF_KEYWORD_DEPTH,
+    RRF_SEMANTIC_DEPTH,
+    Searcher,
+)
 
 REPS_PER_QUERY = int(os.getenv("BENCHMARK_REPS", "1"))
 TOP_K = 10
@@ -55,6 +59,7 @@ def main() -> int:
     print("Day 19 benchmark — keyword vs semantic vs hybrid")
     print("=" * 62)
     print(f"  Quality backend: {BENCHMARK_BACKEND}; SEARCH_QUERY_CACHE=0")
+    print(f"  RRF: k={RRF_K}, BM25 depth={RRF_KEYWORD_DEPTH}, semantic depth={RRF_SEMANTIC_DEPTH}")
 
     # ── Load golden set ─────────────────────────────────────────────────
     golden = []
@@ -117,7 +122,7 @@ def main() -> int:
     relationships_ok = (
         avg_hyb > avg_kw
         and avg_hyb > avg_sem
-        and slices["exact"]["kw"] >= slices["exact"]["sem"]
+        and slices["exact"]["kw"] > slices["exact"]["sem"]
         and slices["paraphrase"]["sem"] > slices["paraphrase"]["kw"]
         and slices["paraphrase"]["sem"] > slices["paraphrase"]["hyb"]
         and slices["mixed"]["hyb"] > slices["mixed"]["kw"]

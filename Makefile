@@ -35,7 +35,7 @@ lab: ## [lite] Open Jupyter Lab on http://localhost:8888
 	@$(JUPYTEXT) --to notebook --update notebooks/[0-9]*.py 2>/dev/null || true
 	@$(JUPYTER) lab --notebook-dir=notebooks --ServerApp.token='' --no-browser
 
-benchmark: ## [both] Precision@10 (keyword/semantic/hybrid) + P99 latency table
+benchmark: ## [both] Precision@10 + in-process latency (NB3 owns server-side P99)
 	@$(PY) scripts/benchmark.py
 
 test: ## [both] Run pytest (app + scripts)

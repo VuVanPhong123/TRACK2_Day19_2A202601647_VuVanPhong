@@ -28,6 +28,11 @@ from qdrant_client.models import Distance, VectorParams, PointStruct
 from rank_bm25 import BM25Okapi
 
 from app.embeddings import Embedder
+from app.search import (
+    RRF_KEYWORD_DEPTH,
+    RRF_SEMANTIC_DEPTH,
+    reciprocal_rank_fusion,
+)
 
 DATA = Path(_setup.__file__).resolve().parent.parent / "data"
 
@@ -42,9 +47,9 @@ tokenized = [(d["title"] + " " + d["text"]).lower().split() for d in docs]
 bm25 = BM25Okapi(tokenized)
 
 # NB2 owns an explicit rubric backend. It must not inherit EMBEDDING_BACKEND:
-# the app default remains fastembed, while this notebook gets a reproducible
-# multilingual model with the backend's model-specific query/passage convention.
-backend_name = os.getenv("NB2_EMBEDDING_BACKEND", "multilingual")
+# the app default remains fastembed, while this notebook gets the canonical
+# multilingual MPNet rubric backend. MPNet does not use E5 query/passage prefixes.
+backend_name = os.getenv("NB2_EMBEDDING_BACKEND", "multilingual-mpnet")
 embedder = Embedder(backend_name)
 print(f"Embedding backend: {embedder.backend} ({embedder.model_name}, {embedder.dim}d)")
 client = QdrantClient(":memory:")
@@ -96,23 +101,21 @@ def search_semantic(query: str, top_k: int = TOP_K) -> list[str]:
 # `rank_r(d)` là 1-based (vị trí đầu = 1, không phải 0). $k = 60$ là default công nghiệp.
 #
 # **Bước:**
-# 1. Pull top-50 từ BM25 và top-50 từ vector (depth = 5×top_k để có signal sâu).
+# 1. Pull top-75 từ BM25 và top-15 từ vector. Đây là kích thước candidate pool,
+#    không phải weighted fusion.
+#    BM25 cần pool sâu để bảo toàn exact/mixed coverage; semantic giữ top ranks
+#    có precision cao và tránh để long tail lấn át RRF.
 # 2. Cho mỗi doc, cộng `1 / (k + rank)` từ mỗi retriever (nếu doc không xuất hiện thì bỏ qua).
 # 3. Sort theo total score, trả về top-10 doc_id.
 
 # %%
 def search_hybrid(query: str, top_k: int = TOP_K, rrf_k: int = RRF_K) -> list[str]:
-    depth = max(top_k * 5, 50)
-    kw_ids = search_keyword(query, depth)
-    sem_ids = search_semantic(query, depth)
-
-    rrf: dict[str, float] = {}
-    for rank, doc_id in enumerate(kw_ids, start=1):
-        rrf[doc_id] = rrf.get(doc_id, 0.0) + 1.0 / (rrf_k + rank)
-    for rank, doc_id in enumerate(sem_ids, start=1):
-        rrf[doc_id] = rrf.get(doc_id, 0.0) + 1.0 / (rrf_k + rank)
-
-    return [doc_id for doc_id, _ in sorted(rrf.items(), key=lambda kv: -kv[1])[:top_k]]
+    kw_ids = search_keyword(query, max(top_k, RRF_KEYWORD_DEPTH))
+    sem_ids = search_semantic(query, max(top_k, RRF_SEMANTIC_DEPTH))
+    return [
+        doc_id
+        for doc_id, _score in reciprocal_rank_fusion([kw_ids, sem_ids], top_k, rrf_k)
+    ]
 
 
 # Quick sanity (1 paraphrase query from data/golden_set.jsonl):
@@ -181,7 +184,7 @@ for t in ("exact", "paraphrase", "mixed"):
 #   thường ngang bằng (keyword signal đã đủ mạnh).
 # - `paraphrase` queries dùng từ Việt **không** xuất hiện verbatim trong docs
 #   → BM25 giảm điểm, còn chất lượng vector phụ thuộc backend. NB2 chọn
-#   backend multilingual explicit ở cell đầu; kết quả thực thi ở trên là
+#   backend multilingual MPNet explicit ở cell đầu; kết quả thực thi ở trên là
 #   nguồn sự thật và không phụ thuộc vào cấu hình app runtime.
 # - `mixed` queries có cả từ exact + ý tưởng paraphrased; bảng thực thi là
 #   nguồn sự thật cho mức cải thiện, không dùng claim cố định.
@@ -212,7 +215,7 @@ avg_hyb = statistics.mean(p_hyb)
 
 assert avg_hyb > avg_kw, f"overall hybrid {avg_hyb:.3%} <= keyword {avg_kw:.3%}"
 assert avg_hyb > avg_sem, f"overall hybrid {avg_hyb:.3%} <= semantic {avg_sem:.3%}"
-assert slice_avg["exact"]["kw"] >= slice_avg["exact"]["sem"]
+assert slice_avg["exact"]["kw"] > slice_avg["exact"]["sem"]
 assert slice_avg["paraphrase"]["sem"] > slice_avg["paraphrase"]["kw"]
 assert slice_avg["paraphrase"]["sem"] > slice_avg["paraphrase"]["hyb"]
 assert slice_avg["mixed"]["hyb"] > slice_avg["mixed"]["kw"]

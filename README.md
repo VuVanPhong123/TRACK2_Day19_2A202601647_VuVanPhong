@@ -15,18 +15,19 @@ Build hybrid search API + Feast feature store hoàn chỉnh, đo Precision@10 v�
 
 > **Embedding model là một biến thật.** `EMBEDDING_BACKEND` trong `.env` chọn
 > giữa `fastembed` (bge-small, 384d, tiếng Anh — mặc định lite),
-> `multilingual-lite` (MiniLM đa ngữ, 384d), `multilingual` (e5-large, 1024d),
+> `multilingual-lite` (MiniLM đa ngữ, 384d), `multilingual-mpnet` (MPNet đa ngữ, 768d),
+> `multilingual` (E5-large, 1024d),
 > `bge-m3` (1024d, mặc định của path Docker)
-> và `openai` (1536d). Đây chính là bài học ở NB2: bge-small yếu trên câu hỏi
-> tiếng Việt diễn đạt lại; đổi sang bge-m3 rồi chạy lại NB2 để **tự đo** mức
-> cải thiện. Đổi model = đổi số chiều = **phải index lại**.
+> và `openai` (1536d). NB2 dùng MPNet làm backend rubric canonical vì bge-small
+> yếu trên câu hỏi tiếng Việt diễn đạt lại. Đổi model = đổi số chiều = **phải
+> index lại**.
 
 NB2 dùng cùng abstraction `app/embeddings.py` nhưng tự chọn backend rubric
-explicit mặc định là `multilingual` (multilingual-e5-large, 1024d, khoảng
-2.2 GB download, có `query:`/`passage:` convention đúng của E5). Lite mặc
-định của app runtime vẫn là `fastembed`/bge-small 384d; NB1, NB3 và NB5–NB8
-không thừa hưởng lựa chọn riêng của NB2. Có thể override chỉ NB2 bằng
-`NB2_EMBEDDING_BACKEND=<backend> make notebooks`.
+explicit mặc định là `multilingual-mpnet` (768d, fastembed). Lite mặc định
+của app runtime vẫn là `fastembed`/bge-small 384d; NB1, NB3 và NB5–NB8 không
+thừa hưởng lựa chọn riêng của NB2. Backend E5 (`multilingual`) vẫn được hỗ
+trợ như một lựa chọn tùy chọn, nhưng không phải canonical NB2. Vì vậy `make
+benchmark` và `make notebooks` sạch đều tái tạo cùng cấu hình MPNet/RRF.
 
 ---
 
@@ -62,7 +63,7 @@ make seed            Both: regenerate data/ files
 make api             Lite: FastAPI on :8000
 make lab             Lite: Jupyter Lab on :8888
 make benchmark       Both: canonical NB2 quality + small uncached local table
-make test            Both: pytest (45 tests, ~2 s)
+make test            Both: pytest (46 tests, ~2 s)
 make gen-advanced    Both: regenerate NB6 compound queries + NB8 spend parquet
 make notebooks       Both: execute ALL notebooks headless (what the grader runs)
 make clean-lite      Lite: wipe venv + data + Feast registry

@@ -22,6 +22,15 @@ def test_e5_query_and_document_conventions_are_explicit(monkeypatch):
     assert seen == ["passage: document", "query: query"]
 
 
+def test_multilingual_mpnet_backend_declares_model_and_dimension():
+    embedder = Embedder("multilingual-mpnet")
+
+    assert embedder.model_name == "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+    assert embedder.dim == 768
+    assert embedder.spec.query_prefix == ""
+    assert embedder.spec.document_prefix == ""
+
+
 def test_query_cache_disable_reembeds_each_query(monkeypatch):
     monkeypatch.setenv("SEARCH_QUERY_CACHE", "0")
     searcher = Searcher()
@@ -59,12 +68,14 @@ def test_rank_only_hybrid_materializes_same_public_hit_shape():
     ]
     searcher.doc_ids = ["d1", "d2"]
     searcher._docs_by_id = {d["doc_id"]: d for d in searcher.docs}
-    searcher._rank_keyword = lambda query, top_k: [("d1", 10.0), ("d2", 1.0)]
-    searcher._rank_semantic = lambda query, top_k: [("d2", 0.9), ("d1", 0.8)]
+    calls = []
+    searcher._rank_keyword = lambda query, top_k: calls.append(("keyword", top_k)) or [("d1", 10.0), ("d2", 1.0)]
+    searcher._rank_semantic = lambda query, top_k: calls.append(("semantic", top_k)) or [("d2", 0.9), ("d1", 0.8)]
 
-    hits = searcher._search_hybrid("q", top_k=2, rrf_k=60)
+    hits = searcher._search_hybrid("q", top_k=10, rrf_k=60)
 
     assert [h.doc_id for h in hits] == ["d1", "d2"]
+    assert calls == [("keyword", 75), ("semantic", 15)]
     assert hits[0].title == "Title 1"
     assert hits[0].text == "Text 1"
     assert hits[0].score == 1 / 61 + 1 / 62

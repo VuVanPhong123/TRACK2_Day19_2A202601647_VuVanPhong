@@ -1,7 +1,7 @@
 """Pluggable embedding backends, selected by the EMBEDDING_BACKEND env var.
 
 Why this exists: `.env.example` has always advertised
-`EMBEDDING_BACKEND=fastembed | multilingual | bge-m3 | openai`, setup-docker.sh flips it to
+`EMBEDDING_BACKEND=fastembed | multilingual-lite | multilingual-mpnet | multilingual | bge-m3 | openai`, setup-docker.sh flips it to
 `bge-m3` and prints "bge-m3 embeddings", and the README sells bge-m3 as the
 reason to take the Docker path -- but nothing ever read the variable. Every
 path silently used BAAI/bge-small-en-v1.5, an ENGLISH model, which is exactly
@@ -16,6 +16,9 @@ opt-in via the environment.
     EMBEDDING_BACKEND=multilingual-lite
                                     sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
                                                                384   (fastembed, light multilingual)
+    EMBEDDING_BACKEND=multilingual-mpnet
+                                    sentence-transformers/paraphrase-multilingual-mpnet-base-v2
+                                                               768   (fastembed, multilingual)
     EMBEDDING_BACKEND=multilingual  intfloat/multilingual-e5-large 1024 (fastembed, full quality)
     EMBEDDING_BACKEND=bge-m3        BAAI/bge-m3                1024  (sentence-transformers)
     EMBEDDING_BACKEND=openai        text-embedding-3-small     1536  (needs OPENAI_API_KEY)
@@ -47,6 +50,10 @@ BACKENDS: dict[str, BackendSpec] = {
     "multilingual-lite": BackendSpec(
         "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", 384, "fastembed",
         "Multilingual and light enough for a rubric-quality lite NB2 run",
+    ),
+    "multilingual-mpnet": BackendSpec(
+        "sentence-transformers/paraphrase-multilingual-mpnet-base-v2", 768, "fastembed",
+        "Multilingual MPNet; used by the canonical NB2 rubric run",
     ),
     "multilingual": BackendSpec(
         "intfloat/multilingual-e5-large", 1024, "fastembed",

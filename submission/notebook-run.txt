@@ -1,8 +1,30 @@
+Command: JUPYTER_DATA_DIR=/tmp/codex-jupyter-data make notebooks
+
 notebooks/01_embeddings_index.ipynb       PASS
 notebooks/02_hybrid_search_rrf.ipynb      PASS
-notebooks/03_search_api_benchmark.ipynb   PASS (executed; latest rubric latency WARN at 54.1ms)
+notebooks/03_search_api_benchmark.ipynb   PASS (server-side hybrid P99 40.9ms)
 notebooks/04_feast_feature_store.ipynb    PASS
 notebooks/05_filtered_search.ipynb        PASS
 notebooks/06_agent_retrieval.ipynb        PASS
 notebooks/07_semantic_cache.ipynb         PASS
 notebooks/08_feature_engineering.ipynb    PASS
+
+NB2 executed backend: multilingual-mpnet
+NB2 Precision@10: BM25 77.8%, semantic 80.6%, hybrid 81.0%
+NB2 slices:
+  exact       BM25 96.7%, semantic 88.0%, hybrid 94.0%
+  paraphrase BM25 33.3%, semantic 55.3%, hybrid 46.0%
+  mixed       BM25 97.0%, semantic 94.0%, hybrid 97.5%
+NB2 assertions: PASS — overall and all required query-type relationships hold
+
+NB3 server-side latency:
+  mode       P50    P95    P99
+  keyword    1.1ms  1.4ms  1.6ms
+  semantic  29.4ms 38.0ms 42.4ms
+  hybrid    28.8ms 37.5ms 40.9ms
+NB3 methodology: SEARCH_QUERY_CACHE=0; 9 non-golden warm-up requests;
+primary measurement queries were not pre-cached.
+NB3 assertion: PASS — hybrid P99 < 50ms (40.9ms)
+
+Notebook integrity inspection: 8/8 have execution counts for every code
+cell and 0 cells with output_type=error.
