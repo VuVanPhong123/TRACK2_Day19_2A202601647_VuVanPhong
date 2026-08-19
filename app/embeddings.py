@@ -1,7 +1,7 @@
 """Pluggable embedding backends, selected by the EMBEDDING_BACKEND env var.
 
 Why this exists: `.env.example` has always advertised
-`EMBEDDING_BACKEND=fastembed | bge-m3 | openai`, setup-docker.sh flips it to
+`EMBEDDING_BACKEND=fastembed | multilingual | bge-m3 | openai`, setup-docker.sh flips it to
 `bge-m3` and prints "bge-m3 embeddings", and the README sells bge-m3 as the
 reason to take the Docker path -- but nothing ever read the variable. Every
 path silently used BAAI/bge-small-en-v1.5, an ENGLISH model, which is exactly
@@ -13,7 +13,10 @@ and every rubric threshold behave exactly as before. The other backends are
 opt-in via the environment.
 
     EMBEDDING_BACKEND=fastembed     BAAI/bge-small-en-v1.5     384   (default, lite)
-    EMBEDDING_BACKEND=multilingual  intfloat/multilingual-e5-large 1024 (fastembed)
+    EMBEDDING_BACKEND=multilingual-lite
+                                    sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+                                                               384   (fastembed, light multilingual)
+    EMBEDDING_BACKEND=multilingual  intfloat/multilingual-e5-large 1024 (fastembed, full quality)
     EMBEDDING_BACKEND=bge-m3        BAAI/bge-m3                1024  (sentence-transformers)
     EMBEDDING_BACKEND=openai        text-embedding-3-small     1536  (needs OPENAI_API_KEY)
 """
@@ -39,6 +42,10 @@ class BackendSpec:
 BACKENDS: dict[str, BackendSpec] = {
     "fastembed": BackendSpec("BAAI/bge-small-en-v1.5", 384, "fastembed",
                              "English-focused; weak on Vietnamese paraphrase (that is the NB2 lesson)"),
+    "multilingual-lite": BackendSpec(
+        "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", 384, "fastembed",
+        "Multilingual and light enough for a rubric-quality lite NB2 run",
+    ),
     "multilingual": BackendSpec("intfloat/multilingual-e5-large", 1024, "fastembed",
                                 "Multilingual, no extra dependency, ~2.2 GB download"),
     "bge-m3": BackendSpec("BAAI/bge-m3", 1024, "sentence-transformers",
@@ -77,7 +84,14 @@ class Embedder:
         p = self.spec.provider
         if p == "fastembed":
             from fastembed import TextEmbedding
-            self._impl = TextEmbedding(model_name=self.spec.model)
+            kwargs = {}
+            thread_setting = os.getenv("EMBEDDING_THREADS")
+            if thread_setting:
+                try:
+                    kwargs["threads"] = int(thread_setting)
+                except ValueError as exc:
+                    raise ValueError("EMBEDDING_THREADS must be an integer") from exc
+            self._impl = TextEmbedding(model_name=self.spec.model, **kwargs)
         elif p == "sentence-transformers":
             try:
                 from sentence_transformers import SentenceTransformer

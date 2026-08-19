@@ -16,6 +16,7 @@
 # %%
 import _setup  # noqa: F401
 import atexit
+import os
 import statistics
 import subprocess
 import time
@@ -31,9 +32,19 @@ import httpx
 
 # %%
 ROOT = Path(_setup.__file__).resolve().parent.parent
+server_env = os.environ.copy()
+server_env["SEARCH_QUERY_CACHE"] = "0"
+server_env["EMBEDDING_THREADS"] = "1"
+# Keep the single-worker benchmark deterministic on constrained CI runners;
+# otherwise BLAS/OpenMP can oversubscribe the embedding request path.
+server_env["OMP_NUM_THREADS"] = "1"
+server_env["OPENBLAS_NUM_THREADS"] = "1"
+server_env["MKL_NUM_THREADS"] = "1"
+server_env["PYTHONPATH"] = str(ROOT) + os.pathsep + server_env.get("PYTHONPATH", "")
 proc = subprocess.Popen(
     ["uvicorn", "app.main:app", "--port", "8000", "--log-level", "warning"],
     cwd=str(ROOT),
+    env=server_env,
 )
 
 
@@ -44,7 +55,10 @@ def stop_server() -> None:
 
 atexit.register(stop_server)
 
-# Đợi server up + warm (Searcher.from_corpus loads embeddings + indexes 1000 docs)
+# Đợi server up + warm (Searcher.from_corpus loads embeddings + indexes 1000 docs).
+# The primary measurement disables only the query-vector cache: model, index,
+# and HTTP server are still warm, while golden queries pay realistic embedding
+# cost instead of becoming cache hits during the benchmark.
 URL = "http://localhost:8000"
 for _ in range(600):
     try:
@@ -72,9 +86,9 @@ for h in body["hits"][:3]:
     print(f"  {h['doc_id']:>14}  score={h['score']:.4f}  {h['title']}")
 
 # %% [markdown]
-# ## 3. Latency benchmark (100 queries × 3 modes)
+# ## 3. Latency benchmark (500 queries × 3 modes)
 #
-# Dùng 50 golden queries × 2 reps = 100 calls/mode. Ghi nhận latency từ
+# Dùng 50 golden queries × 10 reps = 500 calls/mode. Ghi nhận latency từ
 # `body["latency_ms"]` (server-side, đã trừ network) HOẶC từ wall-clock httpx
 # (bao gồm network) — note: rubric assert P99 < 50ms áp dụng cho server-side.
 #
@@ -94,7 +108,7 @@ def percentile(values: list[float], p: float) -> float:
     return sorted(values)[min(int(n * p), n - 1)]
 
 
-def benchmark_mode(mode: str, reps: int = 2) -> dict[str, float]:
+def benchmark_mode(mode: str, reps: int = 10) -> dict[str, float]:
     server_latencies: list[float] = []
     wall_latencies: list[float] = []
     for _ in range(reps):
@@ -112,14 +126,22 @@ def benchmark_mode(mode: str, reps: int = 2) -> dict[str, float]:
     }
 
 
-# Warm every query in every mode before collecting latency. This keeps cold
-# model loading and first-seen query-vector inference out of the server-side
-# tail while still measuring real HTTP requests and real search work below.
+# Warm infrastructure with probes that are not in the benchmark set. This
+# removes model/index/server startup from the measurement without pre-populating
+# the cache with the exact golden queries.
+warmup_queries = [
+    "kiểm tra khởi động máy chủ tìm kiếm",
+    "đo độ sẵn sàng của chỉ mục vector",
+    "warmup truy vấn HTTP không thuộc golden set",
+]
 for mode in ("keyword", "semantic", "hybrid"):
-    for q in golden:
-        warm = httpx.get(f"{URL}/search", params={"q": q["query"], "mode": mode})
+    for warm_query in warmup_queries:
+        warm = httpx.get(f"{URL}/search", params={"q": warm_query, "mode": mode})
         warm.raise_for_status()
-print(f"Warm-up complete: {len(golden) * 3} successful HTTP requests")
+print(
+    f"Infrastructure warm-up complete: {len(warmup_queries) * 3} successful HTTP requests; "
+    "query-vector cache disabled for primary measurements"
+)
 
 print(f"  {'mode':10}  {'P50':>7}  {'P95':>7}  {'P99':>7}  {'P99(wall)':>9}")
 results = {}

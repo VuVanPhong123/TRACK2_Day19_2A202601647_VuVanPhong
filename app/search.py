@@ -53,6 +53,9 @@ class Searcher:
         self.client: QdrantClient | None = None
         self.embedder: Embedder | None = None
         self._query_vector_cache: dict[str, list[float]] = {}
+        self._query_vector_cache_enabled = os.getenv("SEARCH_QUERY_CACHE", "1").strip().lower() not in {
+            "0", "false", "no", "off"
+        }
 
     @property
     def size(self) -> int:
@@ -163,10 +166,11 @@ class Searcher:
 
     def _search_semantic(self, query: str, top_k: int) -> list[SearchHit]:
         assert self.client is not None and self.embedder is not None
-        q_vec = self._query_vector_cache.get(query)
+        q_vec = self._query_vector_cache.get(query) if self._query_vector_cache_enabled else None
         if q_vec is None:
             q_vec = next(self.embedder.embed([query])).tolist()
-            self._query_vector_cache[query] = q_vec
+            if self._query_vector_cache_enabled:
+                self._query_vector_cache[query] = q_vec
         result = self.client.query_points(
             collection_name=COLLECTION,
             query=q_vec,

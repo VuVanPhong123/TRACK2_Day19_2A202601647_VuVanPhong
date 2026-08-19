@@ -15,10 +15,16 @@ Build hybrid search API + Feast feature store hoàn chỉnh, đo Precision@10 v�
 
 > **Embedding model là một biến thật.** `EMBEDDING_BACKEND` trong `.env` chọn
 > giữa `fastembed` (bge-small, 384d, tiếng Anh — mặc định lite),
-> `multilingual` (e5-large, 1024d), `bge-m3` (1024d, mặc định của path Docker)
+> `multilingual-lite` (MiniLM đa ngữ, 384d), `multilingual` (e5-large, 1024d),
+> `bge-m3` (1024d, mặc định của path Docker)
 > và `openai` (1536d). Đây chính là bài học ở NB2: bge-small yếu trên câu hỏi
 > tiếng Việt diễn đạt lại; đổi sang bge-m3 rồi chạy lại NB2 để **tự đo** mức
 > cải thiện. Đổi model = đổi số chiều = **phải index lại**.
+
+NB2 dùng cùng abstraction `app/embeddings.py`. Lite mặc định của toàn app vẫn
+dùng `fastembed`; để chạy evidence rubric-quality multilingual nhẹ, chạy
+`NB2_EMBEDDING_BACKEND=multilingual-lite make notebooks`. Backend `multilingual`
+(e5-large) vẫn có sẵn cho máy nhiều RAM nhưng cần khoảng 2.2 GB download.
 
 ---
 
@@ -54,7 +60,7 @@ make seed            Both: regenerate data/ files
 make api             Lite: FastAPI on :8000
 make lab             Lite: Jupyter Lab on :8888
 make benchmark       Both: Precision@10 + P99 latency table
-make test            Both: pytest (34 tests, ~2 s)
+make test            Both: pytest (41 tests, ~2 s)
 make gen-advanced    Both: regenerate NB6 compound queries + NB8 spend parquet
 make notebooks       Both: execute ALL notebooks headless (what the grader runs)
 make clean-lite      Lite: wipe venv + data + Feast registry

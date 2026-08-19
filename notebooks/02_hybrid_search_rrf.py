@@ -19,13 +19,15 @@
 # %%
 import _setup  # noqa: F401
 import json
+import os
 import statistics
 from pathlib import Path
 
-from fastembed import TextEmbedding
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 from rank_bm25 import BM25Okapi
+
+from app.embeddings import Embedder
 
 DATA = Path(_setup.__file__).resolve().parent.parent / "data"
 
@@ -39,12 +41,21 @@ docs = [json.loads(line) for line in (DATA / "corpus_vn.jsonl").open(encoding="u
 tokenized = [(d["title"] + " " + d["text"]).lower().split() for d in docs]
 bm25 = BM25Okapi(tokenized)
 
-# Vector
-embedder = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
+# Vector. Keep lite reproducibility with the existing default, while allowing a
+# rubric-quality multilingual run without duplicating model-selection logic.
+# Use `multilingual-lite` for a reproducible lite-path quality run; the larger
+# `multilingual` backend remains available when more RAM is available.
+backend_name = (
+    os.getenv("NB2_EMBEDDING_BACKEND")
+    or os.getenv("EMBEDDING_BACKEND")
+    or "fastembed"
+)
+embedder = Embedder(backend_name)
+print(f"Embedding backend: {embedder.backend} ({embedder.model_name}, {embedder.dim}d)")
 client = QdrantClient(":memory:")
 client.create_collection(
     collection_name="lab19",
-    vectors_config=VectorParams(size=384, distance=Distance.COSINE),
+    vectors_config=VectorParams(size=embedder.dim, distance=Distance.COSINE),
 )
 BATCH = 64
 points = []
@@ -174,11 +185,10 @@ for t in ("exact", "paraphrase", "mixed"):
 # - `exact` queries chứa từ kỹ thuật verbatim trong corpus → BM25 mạnh, hybrid
 #   thường ngang bằng (keyword signal đã đủ mạnh).
 # - `paraphrase` queries dùng từ Việt **không** xuất hiện verbatim trong docs
-#   → cả BM25 và vector đều giảm điểm. Trên synthetic corpus 1000-doc với
-#   embedding model `BAAI/bge-small-en-v1.5` (English-trained), semantic
-#   recall trên Vietnamese paraphrases yếu (24-32%). **Đổi sang `bge-m3`
-#   (full Docker path) sẽ giúp semantic thắng paraphrase queries** — đây là
-#   teaching moment cho "embedding model choice matters".
+#   → BM25 giảm điểm, còn chất lượng vector phụ thuộc backend. Lite mặc định
+#   dùng `fastembed`/bge-small để chạy nhẹ; chạy rubric-quality bằng
+#   `NB2_EMBEDDING_BACKEND=multilingual-lite` để đo multilingual thật mà vẫn
+#   giữ được reproducibility của lite path.
 # - `mixed` queries có cả từ exact + ý tưởng paraphrased → **hybrid thắng rõ**
 #   (~100% vs 97-98% pure modes). Đây là pattern production-relevant nhất
 #   vì user thật ít khi viết query 100% exact term hoặc 100% paraphrase.
