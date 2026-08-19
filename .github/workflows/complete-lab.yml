@@ -33,8 +33,6 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          # Idempotent cleanup: source notebooks may already have been completed
-          # manually before this workflow runs. Replacing a missing marker is OK.
           replacements = {
               'notebooks/01_embeddings_index.py': {
                   '## 4. TODO — embed + upsert toàn bộ corpus': '## 4. Embed + upsert toàn bộ corpus',
@@ -223,4 +221,6 @@ Không thực hiện bonus vì đây là phần optional, không thuộc yêu c�
           git add notebooks/[0-9]*.py notebooks/[0-9]*.ipynb submission/REFLECTION.md submission/screenshots/*.png \
                   submission/test-results.txt submission/verify-lite.txt submission/benchmark.txt submission/notebook-run.txt
           git commit -m 'Complete Day 19 lab artifacts [lab-artifacts]'
+          git fetch origin main
+          git rebase origin/main
           git push origin HEAD:main
