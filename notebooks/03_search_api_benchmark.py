@@ -157,12 +157,10 @@ for mode in ("keyword", "semantic", "hybrid"):
 # %%
 hybrid_p99 = results["hybrid"]["p99_server"]
 print(f"Hybrid P99 server-side: {hybrid_p99:.1f}ms")
-if hybrid_p99 < 50:
-    print(f"PASS — hybrid P99 < 50ms ({hybrid_p99:.1f}ms)")
-else:
-    print(f"WARN — hybrid P99 >= 50ms ({hybrid_p99:.1f}ms)")
-    print("  Possible causes: cold cache, fastembed model not warm yet, or RRF depth=50 is too aggressive")
-    print("  Check: re-run benchmark after 10 warm-up queries; or reduce RRF depth")
+assert hybrid_p99 < 50, (
+    f"Hybrid P99 server-side must be < 50ms after warm-up; got {hybrid_p99:.1f}ms"
+)
+print(f"PASS — hybrid P99 < 50ms ({hybrid_p99:.1f}ms)")
 
 # %% [markdown]
 # ## 5. Cleanup — stop the API server

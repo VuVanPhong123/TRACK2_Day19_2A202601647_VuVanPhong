@@ -114,7 +114,7 @@ class FilteredIndex:
         return idx
 
     def embed(self, query: str) -> np.ndarray:
-        return np.asarray(next(self.embedder.embed([query])), dtype=np.float32)
+        return np.asarray(self.embedder.embed_query(query), dtype=np.float32)
 
     # ── ground truth ────────────────────────────────────────────────────
     def exact_top_k(self, qv: np.ndarray, predicate: Callable[[dict], bool], k: int) -> list[str]:

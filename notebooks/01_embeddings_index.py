@@ -18,7 +18,7 @@ import _setup  # noqa: F401  -- adds repo root to sys.path
 import json
 from pathlib import Path
 
-from fastembed import TextEmbedding
+from app.embeddings import Embedder
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 
@@ -42,7 +42,7 @@ print(f"First doc:")
 print(json.dumps(docs[0], ensure_ascii=False, indent=2))
 
 # %% [markdown]
-# ## 2. Embedding model: `BAAI/bge-small-en-v1.5`
+# ## 2. Embedding model
 #
 # `fastembed` chạy ONNX → CPU friendly, không cần GPU. 384-dim vectors.
 #
@@ -51,9 +51,10 @@ print(json.dumps(docs[0], ensure_ascii=False, indent=2))
 # > Cho lab này dùng `bge-small-en` để mọi laptop chạy được nhanh.
 
 # %%
-embedder = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
-sample = list(embedder.embed(["cloud computing tiếng Việt"]))[0]
-print(f"Vector dim: {len(sample)}")
+embedder = Embedder()
+sample = embedder.embed_query("cloud computing tiếng Việt")
+print(f"Embedding backend: {embedder.backend} ({embedder.model_name})")
+print(f"Vector dim: {embedder.dim}")
 print(f"First 8 values: {sample[:8].tolist()}")
 
 # %% [markdown]
@@ -67,7 +68,7 @@ print(f"First 8 values: {sample[:8].tolist()}")
 client = QdrantClient(":memory:")
 client.create_collection(
     collection_name="lab19",
-    vectors_config=VectorParams(size=384, distance=Distance.COSINE),
+    vectors_config=VectorParams(size=embedder.dim, distance=Distance.COSINE),
 )
 
 # %% [markdown]
@@ -87,7 +88,7 @@ points: list[PointStruct] = []
 for start in range(0, len(docs), BATCH):
     batch = docs[start:start + BATCH]
     texts = [d["title"] + " " + d["text"] for d in batch]
-    vectors = list(embedder.embed(texts))
+    vectors = list(embedder.embed_documents(texts))
     for i, (d, v) in enumerate(zip(batch, vectors)):
         points.append(PointStruct(
             id=start + i,
@@ -109,7 +110,7 @@ assert n_indexed == 1000, f"expected 1000 indexed, got {n_indexed}"
 
 # %%
 query = "cloud computing và tự động mở rộng"
-q_vec = next(embedder.embed([query])).tolist()
+q_vec = embedder.embed_query(query).tolist()
 hits = client.query_points(collection_name="lab19", query=q_vec, limit=5).points
 
 print(f"Query: {query!r}")
@@ -125,7 +126,7 @@ for i, h in enumerate(hits, 1):
 
 # %%
 query2 = "phương pháp tự động mở rộng hạ tầng theo lưu lượng người dùng"
-q_vec2 = next(embedder.embed([query2])).tolist()
+q_vec2 = embedder.embed_query(query2).tolist()
 hits2 = client.query_points(collection_name="lab19", query=q_vec2, limit=5).points
 
 print(f"Query (paraphrase): {query2!r}")

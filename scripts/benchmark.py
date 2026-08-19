@@ -1,8 +1,8 @@
-"""Benchmark harness: keyword vs semantic vs hybrid on the 50-query golden set.
+"""Canonical quality benchmark: keyword vs semantic vs hybrid on the golden set.
 
 Reports two tables:
   1. Quality — Precision@10 (fraction of top-10 from the relevant topic) per mode.
-  2. Latency — P50 / P95 / P99 over 100 reps of the 50 queries (5000 calls/mode).
+  2. In-process latency — P50 / P95 / P99 over a small uncached pass.
 
 Hybrid uses Reciprocal Rank Fusion (RRF, k=60) over the two ranked lists.
 
@@ -10,11 +10,16 @@ The rubric asserts hybrid strictly beats both pure modes on Precision@10 — the
 corpus + queries (data/corpus_vn.jsonl + data/golden_set.jsonl) are engineered
 to make this true. If hybrid does not win, your fusion implementation is wrong.
 
+The quality backend defaults to the same explicit multilingual E5 backend used
+by NB2. The app's EMBEDDING_BACKEND default remains unchanged; this script
+overrides it locally before importing Searcher.
+
 Run via `make benchmark` or `python scripts/benchmark.py`.
 """
 from __future__ import annotations
 
 import json
+import os
 import statistics as stats
 import sys
 import time
@@ -23,9 +28,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+BENCHMARK_BACKEND = (
+    os.getenv("BENCHMARK_EMBEDDING_BACKEND")
+    or os.getenv("NB2_EMBEDDING_BACKEND")
+    or "multilingual"
+)
+os.environ["EMBEDDING_BACKEND"] = BENCHMARK_BACKEND
+os.environ["SEARCH_QUERY_CACHE"] = "0"
+
 from app.search import Searcher  # noqa: E402  -- depends on sys.path above
 
-REPS_PER_QUERY = 100   # latency rep count per mode
+REPS_PER_QUERY = int(os.getenv("BENCHMARK_REPS", "1"))
 TOP_K = 10
 RRF_K = 60
 
@@ -41,6 +54,7 @@ def precision_at_k(retrieved_ids: list[str], relevant_ids: set[str], k: int = TO
 def main() -> int:
     print("Day 19 benchmark — keyword vs semantic vs hybrid")
     print("=" * 62)
+    print(f"  Quality backend: {BENCHMARK_BACKEND}; SEARCH_QUERY_CACHE=0")
 
     # ── Load golden set ─────────────────────────────────────────────────
     golden = []
@@ -96,8 +110,28 @@ def main() -> int:
         )
     print()
 
+    slices = {
+        mode_hint: {mode: stats.mean(values[mode]) for mode in ("kw", "sem", "hyb")}
+        for mode_hint, values in by_mode.items()
+    }
+    relationships_ok = (
+        avg_hyb > avg_kw
+        and avg_hyb > avg_sem
+        and slices["exact"]["kw"] >= slices["exact"]["sem"]
+        and slices["paraphrase"]["sem"] > slices["paraphrase"]["kw"]
+        and slices["paraphrase"]["sem"] > slices["paraphrase"]["hyb"]
+        and slices["mixed"]["hyb"] > slices["mixed"]["kw"]
+        and slices["mixed"]["hyb"] > slices["mixed"]["sem"]
+    )
+    if not relationships_ok:
+        print("FAIL — quality relationships do not satisfy the rubric")
+        return 1
+
     # ── Latency run (REPS reps × 50 queries) ────────────────────────────
-    print(f"Latency — P50 / P95 / P99 over {REPS_PER_QUERY * len(golden)} calls/mode")
+    print(
+        f"Latency — in-process P50 / P95 / P99 over "
+        f"{REPS_PER_QUERY * len(golden)} uncached calls/mode"
+    )
     for mode in ("keyword", "semantic", "hybrid"):
         latencies = []
         for _ in range(REPS_PER_QUERY):

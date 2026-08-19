@@ -41,15 +41,10 @@ docs = [json.loads(line) for line in (DATA / "corpus_vn.jsonl").open(encoding="u
 tokenized = [(d["title"] + " " + d["text"]).lower().split() for d in docs]
 bm25 = BM25Okapi(tokenized)
 
-# Vector. Keep lite reproducibility with the existing default, while allowing a
-# rubric-quality multilingual run without duplicating model-selection logic.
-# Use `multilingual-lite` for a reproducible lite-path quality run; the larger
-# `multilingual` backend remains available when more RAM is available.
-backend_name = (
-    os.getenv("NB2_EMBEDDING_BACKEND")
-    or os.getenv("EMBEDDING_BACKEND")
-    or "fastembed"
-)
+# NB2 owns an explicit rubric backend. It must not inherit EMBEDDING_BACKEND:
+# the app default remains fastembed, while this notebook gets a reproducible
+# multilingual model with the backend's model-specific query/passage convention.
+backend_name = os.getenv("NB2_EMBEDDING_BACKEND", "multilingual")
 embedder = Embedder(backend_name)
 print(f"Embedding backend: {embedder.backend} ({embedder.model_name}, {embedder.dim}d)")
 client = QdrantClient(":memory:")
@@ -62,7 +57,7 @@ points = []
 for start in range(0, len(docs), BATCH):
     batch = docs[start:start + BATCH]
     texts = [d["title"] + " " + d["text"] for d in batch]
-    vectors = list(embedder.embed(texts))
+    vectors = list(embedder.embed_documents(texts))
     for i, (d, v) in enumerate(zip(batch, vectors)):
         points.append(PointStruct(
             id=start + i, vector=v.tolist(),
@@ -86,7 +81,7 @@ def search_keyword(query: str, top_k: int = TOP_K) -> list[str]:
 
 
 def search_semantic(query: str, top_k: int = TOP_K) -> list[str]:
-    q_vec = next(embedder.embed([query])).tolist()
+    q_vec = embedder.embed_query(query).tolist()
     res = client.query_points(collection_name="lab19", query=q_vec, limit=top_k)
     return [p.payload["doc_id"] for p in res.points]
 
@@ -185,13 +180,11 @@ for t in ("exact", "paraphrase", "mixed"):
 # - `exact` queries chứa từ kỹ thuật verbatim trong corpus → BM25 mạnh, hybrid
 #   thường ngang bằng (keyword signal đã đủ mạnh).
 # - `paraphrase` queries dùng từ Việt **không** xuất hiện verbatim trong docs
-#   → BM25 giảm điểm, còn chất lượng vector phụ thuộc backend. Lite mặc định
-#   dùng `fastembed`/bge-small để chạy nhẹ; chạy rubric-quality bằng
-#   `NB2_EMBEDDING_BACKEND=multilingual-lite` để đo multilingual thật mà vẫn
-#   giữ được reproducibility của lite path.
-# - `mixed` queries có cả từ exact + ý tưởng paraphrased → **hybrid thắng rõ**
-#   (~100% vs 97-98% pure modes). Đây là pattern production-relevant nhất
-#   vì user thật ít khi viết query 100% exact term hoặc 100% paraphrase.
+#   → BM25 giảm điểm, còn chất lượng vector phụ thuộc backend. NB2 chọn
+#   backend multilingual explicit ở cell đầu; kết quả thực thi ở trên là
+#   nguồn sự thật và không phụ thuộc vào cấu hình app runtime.
+# - `mixed` queries có cả từ exact + ý tưởng paraphrased; bảng thực thi là
+#   nguồn sự thật cho mức cải thiện, không dùng claim cố định.
 #
 # Hybrid thắng *trung bình* nhờ robust trên mọi kiểu query — đó là lý do
 # production luôn default hybrid (deck §3, slide "Hybrid Search Mechanics").
@@ -201,6 +194,30 @@ for t in ("exact", "paraphrase", "mixed"):
 #
 # 1. Output cell 4: bảng Precision@10 với 3 mode, hybrid > kw và > sem.
 # 2. Output cell 5: bảng slice theo loại query, exact/paraphrase/mixed.
+
+# %% [markdown]
+# ## 6. Rubric assertions
+
+# %%
+slice_avg = {
+    query_type: {
+        mode: statistics.mean(values[mode])
+        for mode in ("kw", "sem", "hyb")
+    }
+    for query_type, values in by_type.items()
+}
+avg_kw = statistics.mean(p_kw)
+avg_sem = statistics.mean(p_sem)
+avg_hyb = statistics.mean(p_hyb)
+
+assert avg_hyb > avg_kw, f"overall hybrid {avg_hyb:.3%} <= keyword {avg_kw:.3%}"
+assert avg_hyb > avg_sem, f"overall hybrid {avg_hyb:.3%} <= semantic {avg_sem:.3%}"
+assert slice_avg["exact"]["kw"] >= slice_avg["exact"]["sem"]
+assert slice_avg["paraphrase"]["sem"] > slice_avg["paraphrase"]["kw"]
+assert slice_avg["paraphrase"]["sem"] > slice_avg["paraphrase"]["hyb"]
+assert slice_avg["mixed"]["hyb"] > slice_avg["mixed"]["kw"]
+assert slice_avg["mixed"]["hyb"] > slice_avg["mixed"]["sem"]
+print("PASS — overall and all required query-type relationships hold")
 #
 # ---
 #

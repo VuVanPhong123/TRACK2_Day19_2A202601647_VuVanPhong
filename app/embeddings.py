@@ -37,6 +37,8 @@ class BackendSpec:
     dim: int
     provider: str       # fastembed | sentence-transformers | openai
     note: str = ""
+    query_prefix: str = ""
+    document_prefix: str = ""
 
 
 BACKENDS: dict[str, BackendSpec] = {
@@ -46,8 +48,11 @@ BACKENDS: dict[str, BackendSpec] = {
         "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", 384, "fastembed",
         "Multilingual and light enough for a rubric-quality lite NB2 run",
     ),
-    "multilingual": BackendSpec("intfloat/multilingual-e5-large", 1024, "fastembed",
-                                "Multilingual, no extra dependency, ~2.2 GB download"),
+    "multilingual": BackendSpec(
+        "intfloat/multilingual-e5-large", 1024, "fastembed",
+        "Multilingual E5; ~2.2 GB download",
+        query_prefix="query: ", document_prefix="passage: ",
+    ),
     "bge-m3": BackendSpec("BAAI/bge-m3", 1024, "sentence-transformers",
                           "Multilingual; needs sentence-transformers (requirements-full.txt)"),
     "openai": BackendSpec("text-embedding-3-small", 1536, "openai",
@@ -127,6 +132,20 @@ class Embedder:
             resp = impl.embeddings.create(model=self.spec.model, input=texts)
             for item in resp.data:
                 yield np.asarray(item.embedding, dtype=np.float32)
+
+    def embed_documents(self, texts: Iterable[str]) -> Iterator[np.ndarray]:
+        """Embed corpus passages using the backend's document convention."""
+        prefix = self.spec.document_prefix
+        yield from self.embed(f"{prefix}{text}" for text in texts)
+
+    def embed_queries(self, texts: Iterable[str]) -> Iterator[np.ndarray]:
+        """Embed queries using the backend's query convention."""
+        prefix = self.spec.query_prefix
+        yield from self.embed(f"{prefix}{text}" for text in texts)
+
+    def embed_query(self, text: str) -> np.ndarray:
+        """Embed one query with the backend's query convention."""
+        return next(self.embed_queries([text]))
 
 
 def describe() -> str:
