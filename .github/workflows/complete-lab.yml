@@ -27,12 +27,14 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Mark completed notebook sections and fill reflection
+      - name: Normalize completed notebook sections and fill reflection
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
 
+          # Idempotent cleanup: source notebooks may already have been completed
+          # manually before this workflow runs. Replacing a missing marker is OK.
           replacements = {
               'notebooks/01_embeddings_index.py': {
                   '## 4. TODO — embed + upsert toàn bộ corpus': '## 4. Embed + upsert toàn bộ corpus',
@@ -56,8 +58,6 @@ jobs:
               path = Path(name)
               text = path.read_text(encoding='utf-8')
               for old, new in changes.items():
-                  if old not in text:
-                      raise SystemExit(f'Expected marker not found in {name}: {old!r}')
                   text = text.replace(old, new)
               path.write_text(text, encoding='utf-8')
 
@@ -81,7 +81,7 @@ Chất lượng retrieval phụ thuộc mạnh vào embedding model; đổi mode
 
 ## Bonus challenge
 
-Không thực hiện bonus theo phạm vi bài nộp.
+Không thực hiện bonus vì đây là phần optional, không thuộc yêu cầu core + NB5–NB8.
 '''
           Path('submission/REFLECTION.md').write_text(reflection, encoding='utf-8')
           PY
@@ -140,10 +140,9 @@ Không thực hiện bonus theo phạm vi bài nộp.
                           t = out.get('text', '')
                           chunks.append(''.join(t) if isinstance(t, list) else str(t))
                       data = out.get('data', {})
-                      for mime in ('text/plain',):
-                          if mime in data:
-                              t = data[mime]
-                              chunks.append(''.join(t) if isinstance(t, list) else str(t))
+                      if 'text/plain' in data:
+                          t = data['text/plain']
+                          chunks.append(''.join(t) if isinstance(t, list) else str(t))
               if errors:
                   raise SystemExit('Notebook execution error(s): ' + '; '.join(errors))
               return '\n'.join(chunks)
